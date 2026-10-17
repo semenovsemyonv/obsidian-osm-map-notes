@@ -1,0 +1,9 @@
+{
+  "id": "osm-map-notes",
+  "name": "Map Notes (OpenStreetMap)",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Расставляйте заметки на карте OpenStreetMap: раскрывающиеся карточки, связанные линией с меткой, и список меток с папками.",
+  "author": "Semen Semenov",
+  "isDesktopOnly": false
+}
