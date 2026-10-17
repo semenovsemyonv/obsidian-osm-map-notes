@@ -425,6 +425,7 @@ export class MapView extends ItemView {
 	sync() {
 		// скрытые метки (и метки скрытых папок) убираем с карты, состояние карточек сохраняется
 		const markers = this.plugin.data.markers.filter((m) => this.plugin.isMarkerVisible(m));
+		this.contentEl.toggleClass("gis-labels-always", this.plugin.settings.alwaysShowLabels);
 		const alive = new Set(markers.map((m) => m.id));
 		for (const id of [...this.ui.keys()]) if (!alive.has(id)) this.removeMarkerUI(id);
 
@@ -438,6 +439,7 @@ export class MapView extends ItemView {
 				ui.pinEl.style.setProperty("--pin-color", m.color);
 				ui.labelEl.setText(m.name);
 				ui.pinEl.toggleClass("has-card", m.cardOpen);
+				ui.pinEl.toggleClass("is-locked", !!m.locked);
 
 				if (m.cardOpen && !ui.card) ui.card = this.createCard(m);
 				if (!m.cardOpen && ui.card) this.removeCard(ui);
@@ -525,12 +527,18 @@ export class MapView extends ItemView {
 			const startY = e.clientY;
 			const start = this.project(marker.coords)!;
 			let dragging = false;
+			let moved = false;
 			body.setPointerCapture(e.pointerId);
 
 			const onMove = (ev: PointerEvent) => {
 				const dx = ev.clientX - startX;
 				const dy = ev.clientY - startY;
 				if (!dragging && Math.hypot(dx, dy) < 4) return;
+				// закреплённую метку не двигаем, а потянутую — не считаем кликом
+				if (marker.locked) {
+					moved = true;
+					return;
+				}
 				if (!dragging) {
 					dragging = true;
 					pinEl.addClass("is-dragging");
@@ -545,7 +553,7 @@ export class MapView extends ItemView {
 				pinEl.removeClass("is-dragging");
 				if (dragging) {
 					this.plugin.save(false);
-				} else {
+				} else if (!moved) {
 					this.plugin.updateMarker(marker.id, { cardOpen: !marker.cardOpen });
 					if (marker.cardOpen) this.bringToFront(marker.id);
 				}
@@ -750,6 +758,9 @@ export class MapView extends ItemView {
 		menu.addItem((i) => i.setTitle("Переименовать").setIcon("pencil").onClick(() => this.renameMarker(m.id)));
 		menu.addItem((i) => i.setTitle(m.notePath ? "Сменить заметку" : "Привязать заметку").setIcon("link")
 			.onClick(() => this.linkNote(m.id)));
+		menu.addItem((i) => i.setTitle(m.locked ? "Открепить (разрешить перетаскивание)" : "Закрепить на месте")
+			.setIcon(m.locked ? "unlock" : "lock")
+			.onClick(() => this.plugin.updateMarker(m.id, { locked: !m.locked })));
 		menu.addItem((i) => i.setTitle("Связать с меткой…").setIcon("route").onClick(() => this.startLink(m.id)));
 		menu.addItem((i) => i.setTitle("Цвет…").setIcon("palette").onClick(() =>
 			new ColorModal(this.app, m.color, (color) => this.plugin.updateMarker(m.id, { color })).open()));

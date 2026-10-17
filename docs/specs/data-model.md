@@ -26,6 +26,7 @@ PluginData {
 | `cardSize` | `[w, h]` px (по умолчанию `[300, 220]`) |
 | `cardOpen` | карточка развёрнута |
 | `hidden?` | скрыта с карты (в списке остаётся) |
+| `locked?` | закреплена — перетаскивание запрещено |
 
 ## MarkerFolder
 `id`, `name`, `parentId` (`null` — корень), `collapsed`, `hidden?`.

@@ -94,6 +94,13 @@ export class MapSettingTab extends PluginSettingTab {
 			}));
 
 		new Setting(containerEl)
+			.setName("Отображать название метки всегда")
+			.setDesc("Иначе название показывается только при наведении на метку.")
+			.addToggle((tg) => tg
+				.setValue(s.alwaysShowLabels)
+				.onChange((v) => { s.alwaysShowLabels = v; this.plugin.save(); }));
+
+		new Setting(containerEl)
 			.setName("Открывать карточку после перелёта")
 			.addToggle((tg) => tg
 				.setValue(s.openCardOnFly)

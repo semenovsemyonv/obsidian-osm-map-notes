@@ -14,6 +14,8 @@ export interface MapMarker {
 	cardOpen: boolean;
 	/** скрыта с карты (в списке остаётся) */
 	hidden?: boolean;
+	/** закреплена: перетаскивание по карте запрещено */
+	locked?: boolean;
 }
 
 export interface MarkerFolder {
@@ -63,6 +65,8 @@ export interface PluginSettings {
 	flyDuration: number;
 	flyZoom: number;
 	openCardOnFly: boolean;
+	/** подписи меток видны всегда, а не только при наведении */
+	alwaysShowLabels: boolean;
 	sidebarOpen: boolean;
 }
 
@@ -113,6 +117,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	flyDuration: 500,
 	flyZoom: 15,
 	openCardOnFly: true,
+	alwaysShowLabels: false,
 	sidebarOpen: true,
 };
 
