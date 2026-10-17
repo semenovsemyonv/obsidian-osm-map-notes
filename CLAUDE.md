@@ -35,9 +35,9 @@ cp main.js manifest.json styles.css "/Users/semensemenov/Documents/Obsidian/Pers
 
 | Файл | Назначение |
 |---|---|
-| `main.ts` | `MapNotesPlugin`: загрузка/миграция `data.json`, CRUD меток и папок, логика видимости, шина событий, команды, обновление путей при переименовании заметок |
-| `types.ts` | Интерфейсы данных (`MapMarker`, `MarkerFolder`, `PluginSettings`, `OfflineRegion`), `DEFAULT_SETTINGS`, палитра, растровые провайдеры, `uid()` |
-| `mapView.ts` | `MapView` (ItemView, тип `gis-map-notes-view`): карта MapLibre, сборка стиля, DOM-оверлей меток/карточек/линий, тулбар, контекстные меню, drop заметок, собственный `flyTo` |
+| `main.ts` | `MapNotesPlugin`: загрузка/миграция `data.json`, CRUD меток, папок и связей, логика видимости, шина событий, команды, обновление путей при переименовании заметок |
+| `types.ts` | Интерфейсы данных (`MapMarker`, `MarkerFolder`, `MarkerLink`, `PluginSettings`, `OfflineRegion`), `DEFAULT_SETTINGS`, палитра, растровые провайдеры, `uid()` |
+| `mapView.ts` | `MapView` (ItemView, тип `gis-map-notes-view`): карта MapLibre, сборка стиля, DOM/SVG-оверлей меток, карточек и связей, тулбар, контекстные меню, drop заметок, собственный `flyTo` |
 | `sidebar.ts` | Правая выезжающая панель: дерево папок/меток, поиск, drag & drop, скрытие (глаз) |
 | `modals.ts` | `NotePickerModal`, `PromptModal`, `ConfirmModal`, `ColorModal` |
 | `settings.ts` | Вкладка настроек (`MapSettingTab`) |
@@ -57,6 +57,7 @@ cp main.js manifest.json styles.css "/Users/semensemenov/Documents/Obsidian/Pers
   - `offline-changed`, `offline-progress` (job) — состояние скачивания.
   - `save(false)` сохраняет без `changed` — для частых обновлений (камера, положение карточки при перетаскивании).
 - **Рендер меток не через `maplibregl.Marker`**, а свой оверлей поверх карты: `.gis-pins`, `.gis-cards`, SVG `.gis-lines`. На каждый `move` — `updatePositions()` проецирует координаты и двигает элементы через `transform`. `sync()` диффит DOM с данными по `id`.
+- **Связи** (`data.links`) рисуются в той же SVG, в группе `.gis-links` под линиями карточек; геометрия (линия, стрелки-полигоны, надпись) пересчитывается в `updateLinkPositions()` из `updatePositions()`. Режим создания связи — `linkFrom` в `MapView`.
 - **Карточка** хранит смещение от метки в пикселях экрана (`cardOffset`) и размер (`cardSize`); тело — `MarkdownRenderer` с собственным `Component` на карточку.
 - **Стиль карты** (`buildStyle` в `mapView.ts`): vector + online → OpenFreeMap; иначе растровый источник; в офлайне URL тайлов подменяется на `mapnotes://<providerKey>/{z}/{x}/{y}`.
 - **3D** (`plugin.is3d()`) только для vector + online + `buildings3d`: включает наклон/поворот, иначе камера сбрасывается в pitch 0 / bearing 0.

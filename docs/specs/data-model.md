@@ -7,6 +7,7 @@ PluginData {
   settings: PluginSettings
   markers: MapMarker[]
   folders: MarkerFolder[]
+  links: MarkerLink[]
   lastCamera: { center: [lng, lat], zoom } | null
   regions: OfflineRegion[]   // метаданные офлайн-областей; сами тайлы — в IndexedDB
 }
@@ -29,10 +30,20 @@ PluginData {
 ## MarkerFolder
 `id`, `name`, `parentId` (`null` — корень), `collapsed`, `hidden?`.
 
+## MarkerLink
+| Поле | Смысл |
+|---|---|
+| `id` | `uid()` |
+| `from`, `to` | id меток-концов |
+| `direction` | `none` — без стрелок, `forward` — стрелка к `to`, `backward` — к `from`, `both` |
+| `color` | HEX |
+| `label` | надпись на линии, `""` — нет |
+
 ## Инварианты
 - Метка видна на карте ⇔ `!hidden` и ни одна из папок-предков не `hidden` (`isMarkerVisible`).
 - Удаление папки не удаляет содержимое: метки и подпапки переносятся к родителю удалённой папки.
-- Удаление метки не трогает заметку.
+- Удаление метки не трогает заметку, но удаляет все её связи.
+- Между двумя метками не больше одной связи (проверка `findLink` в любом направлении); `from !== to`.
 - Состояние карточки (`cardOpen`, offset, size) сохраняется и у скрытых меток.
 
 ## Сохранение

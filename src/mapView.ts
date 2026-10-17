@@ -4,7 +4,7 @@ import {
 import * as maplibregl from "maplibre-gl";
 import type { StyleSpecification } from "maplibre-gl";
 import type MapNotesPlugin from "./main";
-import { DEFAULT_CARD_OFFSET, DEFAULT_CARD_SIZE, MapMarker } from "./types";
+import { DEFAULT_CARD_OFFSET, DEFAULT_CARD_SIZE, LinkDirection, MapMarker, MarkerLink } from "./types";
 import { easeInOutCubic, fromMerc, rectEdgePoint, toMerc } from "./geo";
 import { ColorModal, ConfirmModal, NotePickerModal, PromptModal } from "./modals";
 import { Sidebar } from "./sidebar";
@@ -46,11 +46,32 @@ async function buildStyle(plugin: MapNotesPlugin): Promise<StyleSpecification> {
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+/** расстояние от точки метки до центра её «головки», px */
+const PIN_HEAD_Y = 17;
+/** отступ линии связи от центра «головки» метки */
+const LINK_GAP = 15;
+const ARROW_LEN = 11;
+const ARROW_HALF_W = 6;
+
+function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, cls: string): SVGElementTagNameMap[K] {
+	const el = document.createElementNS(SVG_NS, tag);
+	el.classList.add(cls);
+	return el;
+}
 
 interface MarkerUI {
 	pinEl: HTMLElement;
 	labelEl: HTMLElement;
 	card?: CardUI;
+}
+
+interface LinkUI {
+	g: SVGGElement;
+	hitEl: SVGLineElement;
+	lineEl: SVGLineElement;
+	arrowStartEl: SVGPolygonElement;
+	arrowEndEl: SVGPolygonElement;
+	labelEl: SVGTextElement;
 }
 
 interface CardUI {
@@ -72,6 +93,7 @@ export class MapView extends ItemView {
 	private mapEl!: HTMLElement;
 	private overlayEl!: HTMLElement;
 	private svgEl!: SVGSVGElement;
+	private linksEl!: SVGGElement;
 	private pinsEl!: HTMLElement;
 	private cardsEl!: HTMLElement;
 	private addBtn!: HTMLElement;
@@ -80,7 +102,12 @@ export class MapView extends ItemView {
 	private sidebar!: Sidebar;
 
 	private ui = new Map<string, MarkerUI>();
+	private linkUI = new Map<string, LinkUI>();
 	private addMode = false;
+	/** режим создания связи: id метки-начала */
+	private linkFrom: string | null = null;
+	private linkDraftEl: SVGLineElement | null = null;
+	private pointer: [number, number] | null = null;
 	private zTop = 10;
 	private flyRaf = 0;
 	private resizeObserver: ResizeObserver | null = null;
@@ -106,6 +133,9 @@ export class MapView extends ItemView {
 		this.svgEl = document.createElementNS(SVG_NS, "svg");
 		this.svgEl.classList.add("gis-lines");
 		this.overlayEl.appendChild(this.svgEl);
+		// связи рисуются под линиями карточек
+		this.linksEl = svgEl("g", "gis-links");
+		this.svgEl.appendChild(this.linksEl);
 		this.pinsEl = this.overlayEl.createDiv("gis-pins");
 		this.cardsEl = this.overlayEl.createDiv("gis-cards");
 
@@ -116,7 +146,14 @@ export class MapView extends ItemView {
 		this.registerEvent(this.plugin.events.on("changed", () => this.sync()));
 		this.registerEvent(this.plugin.events.on("note-modified", (path: string) => this.onNoteModified(path)));
 		this.registerDomEvent(root, "keydown", (e) => {
-			if (e.key === "Escape" && this.addMode) this.setAddMode(false);
+			if (e.key !== "Escape") return;
+			if (this.addMode) this.setAddMode(false);
+			if (this.linkFrom) this.cancelLink();
+		});
+		this.registerDomEvent(this.wrapEl, "pointermove", (e) => {
+			const r = this.wrapEl.getBoundingClientRect();
+			this.pointer = [e.clientX - r.left, e.clientY - r.top];
+			if (this.linkFrom) this.updateLinkDraft();
 		});
 		this.registerFileDrop();
 		this.registerEvent(this.plugin.events.on("offline-changed", () => this.updateModeButton()));
@@ -174,6 +211,10 @@ export class MapView extends ItemView {
 			this.plugin.save(false);
 		});
 		map.on("click", (e) => {
+			if (this.linkFrom) {
+				this.cancelLink();
+				return;
+			}
 			if (!this.addMode) return;
 			this.setAddMode(false);
 			this.startAddMarker([e.lngLat.lng, e.lngLat.lat]);
@@ -313,6 +354,7 @@ export class MapView extends ItemView {
 	}
 
 	setAddMode(on: boolean) {
+		if (on && this.linkFrom) this.cancelLink();
 		this.addMode = on;
 		this.addBtn.toggleClass("is-active", on);
 		this.wrapEl.toggleClass("is-adding", on);
@@ -401,6 +443,7 @@ export class MapView extends ItemView {
 				if (!m.cardOpen && ui.card) this.removeCard(ui);
 				if (ui.card) this.updateCard(m, ui.card);
 			}
+			this.syncLinks();
 			this.updatePositions();
 		}
 		this.sidebar.render();
@@ -437,7 +480,7 @@ export class MapView extends ItemView {
 			card.el.style.transform = `translate(${cx}px, ${cy}px)`;
 
 			// линия идёт от «головки» метки к ближайшей точке края карточки
-			const headY = y - 17; // центр «головки» метки
+			const headY = y - PIN_HEAD_Y;
 			const edge = rectEdgePoint(x, headY, cx, cy, cw, ch);
 			if (edge) {
 				card.lineEl.setAttribute("x1", String(x));
@@ -453,6 +496,8 @@ export class MapView extends ItemView {
 				card.dotEl.style.display = "none";
 			}
 		}
+		this.updateLinkPositions();
+		this.updateLinkDraft();
 	}
 
 	// ---------------- метки ----------------
@@ -469,6 +514,11 @@ export class MapView extends ItemView {
 		body.addEventListener("pointerdown", (e) => {
 			if (e.button !== 0 || !this.map) return;
 			e.stopPropagation();
+			if (this.linkFrom) {
+				e.preventDefault();
+				this.finishLink(m.id);
+				return;
+			}
 			const marker = this.plugin.getMarker(m.id);
 			if (!marker) return;
 			const startX = e.clientX;
@@ -700,6 +750,7 @@ export class MapView extends ItemView {
 		menu.addItem((i) => i.setTitle("Переименовать").setIcon("pencil").onClick(() => this.renameMarker(m.id)));
 		menu.addItem((i) => i.setTitle(m.notePath ? "Сменить заметку" : "Привязать заметку").setIcon("link")
 			.onClick(() => this.linkNote(m.id)));
+		menu.addItem((i) => i.setTitle("Связать с меткой…").setIcon("route").onClick(() => this.startLink(m.id)));
 		menu.addItem((i) => i.setTitle("Цвет…").setIcon("palette").onClick(() =>
 			new ColorModal(this.app, m.color, (color) => this.plugin.updateMarker(m.id, { color })).open()));
 		menu.addItem((i) => i.setTitle("Переместить в папку…").setIcon("folder-input")
@@ -743,6 +794,181 @@ export class MapView extends ItemView {
 				this.plugin.updateMarker(id, { notePath: "" });
 			}
 		}).open();
+	}
+
+	// ---------------- связи между метками ----------------
+
+	private syncLinks() {
+		// связь видна, только если на карте видны обе её метки
+		const links = this.plugin.data.links.filter((l) => this.ui.has(l.from) && this.ui.has(l.to));
+		const alive = new Set(links.map((l) => l.id));
+		for (const [id, ui] of [...this.linkUI]) {
+			if (alive.has(id)) continue;
+			ui.g.remove();
+			this.linkUI.delete(id);
+		}
+		for (const l of links) {
+			let ui = this.linkUI.get(l.id);
+			if (!ui) {
+				ui = this.createLink(l.id);
+				this.linkUI.set(l.id, ui);
+			}
+			ui.g.style.setProperty("--link-color", l.color);
+			ui.labelEl.textContent = l.label;
+			ui.labelEl.style.display = l.label ? "" : "none";
+		}
+	}
+
+	private createLink(id: string): LinkUI {
+		const g = svgEl("g", "gis-link");
+		const lineEl = svgEl("line", "gis-link-line");
+		const arrowStartEl = svgEl("polygon", "gis-link-arrow");
+		const arrowEndEl = svgEl("polygon", "gis-link-arrow");
+		// широкая прозрачная линия — чтобы по связи было легко попасть мышью
+		const hitEl = svgEl("line", "gis-link-hit");
+		const labelEl = svgEl("text", "gis-link-label");
+		g.append(lineEl, arrowStartEl, arrowEndEl, hitEl, labelEl);
+		this.linksEl.appendChild(g);
+
+		const onMenu = (e: MouseEvent) => {
+			e.preventDefault();
+			e.stopPropagation();
+			const link = this.plugin.getLink(id);
+			if (link) this.showLinkMenu(link, e);
+		};
+		for (const el of [hitEl, labelEl]) {
+			el.addEventListener("click", onMenu);
+			el.addEventListener("contextmenu", onMenu);
+		}
+		return { g, hitEl, lineEl, arrowStartEl, arrowEndEl, labelEl };
+	}
+
+	private updateLinkPositions() {
+		if (!this.map || !this.linkUI.size) return;
+		const markers = new Map(this.plugin.data.markers.map((m) => [m.id, m]));
+		for (const l of this.plugin.data.links) {
+			const ui = this.linkUI.get(l.id);
+			if (!ui) continue;
+			const a = markers.get(l.from);
+			const b = markers.get(l.to);
+			const pa = a && this.project(a.coords);
+			const pb = b && this.project(b.coords);
+			const ax = pa?.[0] ?? 0;
+			const ay = (pa?.[1] ?? 0) - PIN_HEAD_Y;
+			const bx = pb?.[0] ?? 0;
+			const by = (pb?.[1] ?? 0) - PIN_HEAD_Y;
+			const len = Math.hypot(bx - ax, by - ay);
+			// метки почти совпадают — линию не рисуем
+			if (!pa || !pb || len < LINK_GAP * 2 + ARROW_LEN) {
+				ui.g.style.display = "none";
+				continue;
+			}
+			ui.g.style.display = "";
+			const ux = (bx - ax) / len;
+			const uy = (by - ay) / len;
+			// концы линии — у края «головок» меток
+			const x1 = ax + ux * LINK_GAP;
+			const y1 = ay + uy * LINK_GAP;
+			const x2 = bx - ux * LINK_GAP;
+			const y2 = by - uy * LINK_GAP;
+			const atStart = l.direction === "backward" || l.direction === "both";
+			const atEnd = l.direction === "forward" || l.direction === "both";
+			// пунктир заканчивается у основания стрелки
+			const inset = ARROW_LEN - 2;
+			setLine(ui.lineEl, x1 + (atStart ? ux * inset : 0), y1 + (atStart ? uy * inset : 0),
+				x2 - (atEnd ? ux * inset : 0), y2 - (atEnd ? uy * inset : 0));
+			setLine(ui.hitEl, x1, y1, x2, y2);
+			setArrow(ui.arrowStartEl, atStart, x1, y1, -ux, -uy);
+			setArrow(ui.arrowEndEl, atEnd, x2, y2, ux, uy);
+
+			if (l.label) {
+				// надпись над серединой линии, всегда читается слева направо
+				let angle = (Math.atan2(uy, ux) * 180) / Math.PI;
+				if (angle > 90) angle -= 180;
+				else if (angle < -90) angle += 180;
+				ui.labelEl.setAttribute("transform", `translate(${(x1 + x2) / 2} ${(y1 + y2) / 2}) rotate(${angle}) translate(0 -7)`);
+			}
+		}
+	}
+
+	/** Режим создания связи: следующий клик по метке соединяет её с from */
+	startLink(fromId: string) {
+		const from = this.plugin.getMarker(fromId);
+		if (!from || !this.map) return;
+		if (this.addMode) this.setAddMode(false);
+		this.cancelLink();
+		this.linkFrom = fromId;
+		this.wrapEl.addClass("is-linking");
+		this.linkDraftEl = svgEl("line", "gis-link-draft");
+		this.linkDraftEl.style.setProperty("--link-color", from.color);
+		this.svgEl.appendChild(this.linkDraftEl);
+		this.updateLinkDraft();
+		new Notice(`Кликните по метке, которую нужно связать с «${from.name}». Esc — отмена.`, 3000);
+	}
+
+	private updateLinkDraft() {
+		const draft = this.linkDraftEl;
+		const from = this.linkFrom ? this.plugin.getMarker(this.linkFrom) : null;
+		if (!draft || !from) return;
+		const p = this.project(from.coords);
+		if (!p || !this.pointer) {
+			draft.style.display = "none";
+			return;
+		}
+		draft.style.display = "";
+		setLine(draft, p[0], p[1] - PIN_HEAD_Y, this.pointer[0], this.pointer[1]);
+	}
+
+	private cancelLink() {
+		this.linkFrom = null;
+		this.linkDraftEl?.remove();
+		this.linkDraftEl = null;
+		this.wrapEl.removeClass("is-linking");
+	}
+
+	private finishLink(toId: string) {
+		const fromId = this.linkFrom;
+		this.cancelLink();
+		const from = fromId ? this.plugin.getMarker(fromId) : null;
+		if (!from) return;
+		if (fromId === toId) {
+			new Notice("Нельзя связать метку саму с собой");
+			return;
+		}
+		if (this.plugin.findLink(from.id, toId)) {
+			new Notice("Эти метки уже связаны");
+			return;
+		}
+		this.plugin.addLink(from.id, toId, from.color);
+	}
+
+	showLinkMenu(l: MarkerLink, evt: MouseEvent) {
+		const nameA = this.plugin.getMarker(l.from)?.name ?? "?";
+		const nameB = this.plugin.getMarker(l.to)?.name ?? "?";
+		const menu = new Menu();
+		const dirs: [LinkDirection, string, string][] = [
+			["forward", `Стрелка к «${nameB}»`, "arrow-right"],
+			["backward", `Стрелка к «${nameA}»`, "arrow-left"],
+			["both", "Стрелки в обе стороны", "arrow-left-right"],
+			["none", "Без стрелок", "minus"],
+		];
+		for (const [dir, title, icon] of dirs) {
+			menu.addItem((i) => i.setTitle(title).setIcon(icon).setChecked(l.direction === dir)
+				.onClick(() => this.plugin.updateLink(l.id, { direction: dir })));
+		}
+		menu.addSeparator();
+		menu.addItem((i) => i.setTitle(l.label ? "Изменить надпись…" : "Добавить надпись…").setIcon("type")
+			.onClick(() => new PromptModal(this.app, "Надпись на линии", l.label,
+				(label) => this.plugin.updateLink(l.id, { label }), true).open()));
+		menu.addItem((i) => i.setTitle("Цвет…").setIcon("palette").onClick(() =>
+			new ColorModal(this.app, l.color, (color) => this.plugin.updateLink(l.id, { color }), "Цвет линии").open()));
+		menu.addSeparator();
+		menu.addItem((i) => i.setTitle(`Перейти к «${nameA}»`).setIcon("locate-fixed").onClick(() => this.flyTo(l.from)));
+		menu.addItem((i) => i.setTitle(`Перейти к «${nameB}»`).setIcon("locate-fixed").onClick(() => this.flyTo(l.to)));
+		menu.addSeparator();
+		menu.addItem((i) => i.setTitle("Удалить связь").setIcon("trash-2").setWarning(true)
+			.onClick(() => this.plugin.deleteLink(l.id)));
+		menu.showAtMouseEvent(evt);
 	}
 
 	// ---------------- плавный перелёт ----------------
@@ -803,4 +1029,22 @@ export class MapView extends ItemView {
 		};
 		this.flyRaf = requestAnimationFrame(step);
 	}
+}
+
+function setLine(el: SVGLineElement, x1: number, y1: number, x2: number, y2: number) {
+	el.setAttribute("x1", String(x1));
+	el.setAttribute("y1", String(y1));
+	el.setAttribute("x2", String(x2));
+	el.setAttribute("y2", String(y2));
+}
+
+/** Треугольная стрелка с вершиной в (x, y), направленная по (ux, uy) */
+function setArrow(el: SVGPolygonElement, show: boolean, x: number, y: number, ux: number, uy: number) {
+	el.style.display = show ? "" : "none";
+	if (!show) return;
+	const bx = x - ux * ARROW_LEN;
+	const by = y - uy * ARROW_LEN;
+	const px = -uy * ARROW_HALF_W;
+	const py = ux * ARROW_HALF_W;
+	el.setAttribute("points", `${x},${y} ${bx + px},${by + py} ${bx - px},${by - py}`);
 }

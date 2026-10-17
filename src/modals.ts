@@ -49,7 +49,10 @@ export class NotePickerModal extends FuzzySuggestModal<NoteChoice> {
 export class PromptModal extends Modal {
 	private value: string;
 
-	constructor(app: App, private title: string, initial: string, private onSubmit: (value: string) => void) {
+	constructor(
+		app: App, private title: string, initial: string, private onSubmit: (value: string) => void,
+		private allowEmpty = false,
+	) {
 		super(app);
 		this.value = initial;
 	}
@@ -58,7 +61,7 @@ export class PromptModal extends Modal {
 		this.titleEl.setText(this.title);
 		const submit = () => {
 			const v = this.value.trim();
-			if (!v) return;
+			if (!v && !this.allowEmpty) return;
 			this.close();
 			this.onSubmit(v);
 		};
@@ -110,17 +113,17 @@ function rgbToHex(rgb: [number, number, number]): string {
 	return "#" + rgb.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
 }
 
-/** Выбор цвета метки: палитра, системная пипетка, HEX и R/G/B */
+/** Выбор цвета метки или связи: палитра, системная пипетка, HEX и R/G/B */
 export class ColorModal extends Modal {
 	private rgb: [number, number, number];
 
-	constructor(app: App, initial: string, private onPick: (color: string) => void) {
+	constructor(app: App, initial: string, private onPick: (color: string) => void, private title = "Цвет метки") {
 		super(app);
 		this.rgb = hexToRgb(initial) ?? [229, 72, 77];
 	}
 
 	onOpen() {
-		this.titleEl.setText("Цвет метки");
+		this.titleEl.setText(this.title);
 		this.modalEl.addClass("gis-color-modal");
 		const { contentEl } = this;
 

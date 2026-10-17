@@ -1,7 +1,7 @@
 import { Events, Plugin, TAbstractFile, TFile, WorkspaceLeaf, debounce } from "obsidian";
 import {
 	DEFAULT_CARD_OFFSET, DEFAULT_CARD_SIZE, DEFAULT_SETTINGS, MARKER_COLORS,
-	MapMarker, MarkerFolder, PluginData, PluginSettings, TileProvider, resolveTileProvider, uid,
+	LinkDirection, MapMarker, MarkerFolder, MarkerLink, PluginData, PluginSettings, TileProvider, resolveTileProvider, uid,
 } from "./types";
 import { OfflineManager } from "./offline";
 import { MapView, VIEW_TYPE_MAP } from "./mapView";
@@ -24,6 +24,7 @@ export default class MapNotesPlugin extends Plugin {
 			settings: { ...DEFAULT_SETTINGS, ...(raw?.settings ?? {}) },
 			markers: raw?.markers ?? [],
 			folders: raw?.folders ?? [],
+			links: raw?.links ?? [],
 			lastCamera: raw?.lastCamera ?? null,
 			regions: raw?.regions ?? [],
 		};
@@ -125,8 +126,40 @@ export default class MapNotesPlugin extends Plugin {
 		this.save(notify);
 	}
 
+	/** Удаляет метку вместе с её связями */
 	deleteMarker(id: string) {
 		this.data.markers = this.data.markers.filter((m) => m.id !== id);
+		this.data.links = this.data.links.filter((l) => l.from !== id && l.to !== id);
+		this.save();
+	}
+
+	// ---------- связи ----------
+
+	getLink(id: string): MarkerLink | undefined {
+		return this.data.links.find((l) => l.id === id);
+	}
+
+	/** Связь между двумя метками в любом направлении */
+	findLink(a: string, b: string): MarkerLink | undefined {
+		return this.data.links.find((l) => (l.from === a && l.to === b) || (l.from === b && l.to === a));
+	}
+
+	addLink(from: string, to: string, color: string, direction: LinkDirection = "forward"): MarkerLink {
+		const link: MarkerLink = { id: uid(), from, to, direction, color, label: "" };
+		this.data.links.push(link);
+		this.save();
+		return link;
+	}
+
+	updateLink(id: string, patch: Partial<MarkerLink>) {
+		const l = this.getLink(id);
+		if (!l) return;
+		Object.assign(l, patch);
+		this.save();
+	}
+
+	deleteLink(id: string) {
+		this.data.links = this.data.links.filter((l) => l.id !== id);
 		this.save();
 	}
 

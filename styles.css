@@ -20,7 +20,9 @@
 }
 
 .gis-map-wrap.is-adding .gis-map,
-.gis-map-wrap.is-adding .gis-map * {
+.gis-map-wrap.is-adding .gis-map *,
+.gis-map-wrap.is-linking .gis-map,
+.gis-map-wrap.is-linking .gis-map * {
 	cursor: crosshair !important;
 }
 
@@ -65,6 +67,60 @@
 .gis-line-dot {
 	stroke: var(--background-primary);
 	stroke-width: 2;
+}
+
+/* ================= связи между метками ================= */
+.gis-link {
+	--link-color: #6e56cf;
+}
+
+.gis-link-line,
+.gis-link-draft {
+	stroke: var(--link-color);
+	stroke-width: 2.5;
+	stroke-dasharray: 8 6;
+	stroke-linecap: round;
+	fill: none;
+	filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+	transition: stroke-width 0.12s ease;
+}
+
+.gis-link-draft {
+	stroke-dasharray: 4 5;
+	opacity: 0.8;
+}
+
+.gis-link-arrow {
+	fill: var(--link-color);
+	stroke: rgba(255, 255, 255, 0.9);
+	stroke-width: 1;
+	stroke-linejoin: round;
+	filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+}
+
+.gis-link-hit {
+	stroke: transparent;
+	stroke-width: 14;
+	pointer-events: stroke;
+	cursor: pointer;
+}
+
+.gis-link:hover .gis-link-line {
+	stroke-width: 3.5;
+}
+
+.gis-link-label {
+	font-size: 12px;
+	font-weight: 600;
+	text-anchor: middle;
+	fill: var(--text-normal);
+	stroke: var(--background-primary);
+	stroke-width: 4px;
+	stroke-linejoin: round;
+	paint-order: stroke;
+	pointer-events: auto;
+	cursor: pointer;
+	user-select: none;
 }
 
 .gis-pins,

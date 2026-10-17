@@ -25,6 +25,22 @@ export interface MarkerFolder {
 	hidden?: boolean;
 }
 
+/** Направление связи: none — без стрелок, forward — к to, backward — к from, both — в обе стороны */
+export type LinkDirection = "none" | "forward" | "backward" | "both";
+
+/** Пунктирная связь между двумя метками */
+export interface MarkerLink {
+	id: string;
+	/** id метки-начала */
+	from: string;
+	/** id метки-конца */
+	to: string;
+	direction: LinkDirection;
+	color: string;
+	/** надпись посередине линии, "" — без надписи */
+	label: string;
+}
+
 export interface PluginSettings {
 	tileProvider: string;
 	customTileUrl: string;
@@ -54,6 +70,7 @@ export interface PluginData {
 	settings: PluginSettings;
 	markers: MapMarker[];
 	folders: MarkerFolder[];
+	links: MarkerLink[];
 	lastCamera: { center: [number, number]; zoom: number } | null;
 	regions: OfflineRegion[];
 }
