@@ -1,4 +1,4 @@
-import { Menu, setIcon } from "obsidian";
+import { Menu, getIcon, setIcon } from "obsidian";
 import type { MapView } from "./mapView";
 import type { MapMarker, MarkerFolder } from "./types";
 import { ConfirmModal, PromptModal } from "./modals";
@@ -14,6 +14,7 @@ export class Sidebar {
 	private treeEl: HTMLElement;
 	private countEl: HTMLElement;
 	private showAllBtn: HTMLElement;
+	private lockBtn: HTMLElement;
 	private searchEl: HTMLInputElement;
 	private query = "";
 
@@ -23,6 +24,16 @@ export class Sidebar {
 		const handle = this.el.createDiv({ cls: "gis-sidebar-handle", attr: { "aria-label": "Список меток" } });
 		setIcon(handle, "list");
 		handle.onclick = () => this.setOpen(!this.isOpen);
+
+		// замок слева от ручки списка: запрет перетаскивания всех меток
+		this.lockBtn = this.el.createDiv("gis-sidebar-handle gis-lock-handle");
+		this.lockBtn.onclick = () => {
+			const s = this.view.plugin.settings;
+			s.markersLocked = !s.markersLocked;
+			this.view.plugin.save(false);
+			this.updateLockBtn();
+		};
+		this.updateLockBtn();
 
 		const panel = this.el.createDiv("gis-sidebar-panel");
 		const header = panel.createDiv("gis-sidebar-header");
@@ -60,6 +71,16 @@ export class Sidebar {
 			menu.addItem((i) => i.setTitle("Показать все скрытые метки").setIcon("eye").onClick(() => this.view.plugin.showAll()));
 			menu.showAtMouseEvent(e);
 		});
+	}
+
+	private updateLockBtn() {
+		const locked = this.view.plugin.settings.markersLocked;
+		this.lockBtn.empty();
+		// в старых версиях Obsidian иконка открытого замка называется «unlock»
+		setIcon(this.lockBtn, locked ? "lock" : getIcon("lock-open") ? "lock-open" : "unlock");
+		this.lockBtn.setAttr("aria-label", locked
+			? "Метки закреплены — нажмите, чтобы разрешить перетаскивание"
+			: "Закрепить все метки (запретить перетаскивание)");
 	}
 
 	/** Сколько пикселей карты закрывает панель справа */

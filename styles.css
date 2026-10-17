@@ -644,8 +644,13 @@
 	background: var(--background-secondary);
 }
 
-.gis-sidebar.is-open .gis-sidebar-handle {
+.gis-sidebar.is-open .gis-sidebar-handle:not(.gis-lock-handle) {
 	color: var(--interactive-accent);
+}
+
+/* замок «закрепить все метки» — слева от ручки списка; состояние видно только по иконке */
+.gis-sidebar-handle.gis-lock-handle {
+	left: -88px;
 }
 
 .gis-sidebar-panel {

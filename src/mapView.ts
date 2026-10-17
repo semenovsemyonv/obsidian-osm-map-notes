@@ -680,7 +680,7 @@ export class MapView extends ItemView {
 				const dy = ev.clientY - startY;
 				if (!dragging && Math.hypot(dx, dy) < 4) return;
 				// закреплённую метку не двигаем, а потянутую — не считаем кликом
-				if (marker.locked) {
+				if (marker.locked || this.plugin.settings.markersLocked) {
 					moved = true;
 					return;
 				}
