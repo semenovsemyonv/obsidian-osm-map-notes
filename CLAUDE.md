@@ -29,7 +29,7 @@ cp main.js manifest.json styles.css "/Users/semensemenov/Documents/Obsidian/Pers
 - TypeScript (ES2018, `strictNullChecks`, `noImplicitAny`), esbuild → один CJS-файл `main.js`.
 - `obsidian` API (внешний модуль), `maplibre-gl` 4.x (вшивается в бандл, ~0.9 МБ).
 - CSS MapLibre импортируется как текст (`loader: { ".css": "text" }`, декларация в `src/css.d.ts`) и вставляется `<style>` в `onload` — Obsidian подключает только `styles.css` плагина.
-- Сеть — только через `requestUrl` из Obsidian (обходит CORS).
+- Сеть — только через `requestUrl` из Obsidian (обходит CORS). Внешние сервисы без ключей: тайлы OSM/OpenFreeMap, геокодеры Nominatim и Photon.
 
 ## Структура `src/`
 
@@ -45,6 +45,7 @@ cp main.js manifest.json styles.css "/Users/semensemenov/Documents/Obsidian/Pers
 | `offline.ts` | `OfflineManager`: протокол `mapnotes://`, очередь скачивания областей, тайловая математика |
 | `tileStore.ts` | Обёртка IndexedDB для тайлов |
 | `offlineModal.ts` | Модалка «Офлайн-карты»: создание/обновление/удаление областей, прогресс |
+| `geocoder.ts` | Поиск адреса: нормализация русских сокращений, Nominatim + Photon, объединение и ранжирование |
 | `geo.ts` | Web Mercator ↔ lng/lat, easing, пересечение отрезка с прямоугольником |
 
 ## Архитектура
@@ -70,7 +71,8 @@ cp main.js manifest.json styles.css "/Users/semensemenov/Documents/Obsidian/Pers
 - Новые поля настроек добавлять в `PluginSettings` + `DEFAULT_SETTINGS` (слияние со старым `data.json` происходит в `onload`). Поля `defaultCenter/defaultZoom/flyDuration/flyZoom` принудительно сбрасываются к значениям по умолчанию.
 - Новые необязательные поля меток/папок — опциональные (`?`), чтобы старые данные оставались валидными.
 - Подписка на события — через `registerEvent`/`registerDomEvent`/`register`, чтобы всё снималось при выгрузке.
-- Уважать правила tile.openstreetmap.org: ≤2 параллельных запроса, zoom ≤16, ≤30 000 тайлов на область.
+- Уважать правила tile.openstreetmap.org: ≤2 параллельных запроса, zoom ≤16, ≤30 000 тайлов на область. Nominatim — ≤1 запрос/с, только по Enter (без автодополнения).
+- Не передавать `padding` в `easeTo/flyTo` — у MapLibre он становится постоянным; использовать `fitBounds`.
 
 ## Релиз
 

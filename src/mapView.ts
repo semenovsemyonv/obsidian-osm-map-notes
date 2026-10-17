@@ -11,6 +11,7 @@ import { Sidebar } from "./sidebar";
 import { DownloadJob, OFFLINE_PROTOCOL } from "./offline";
 import { OfflineModal } from "./offlineModal";
 import { loadVectorStyle } from "./vectorStyle";
+import { GeoResult, geocode } from "./geocoder";
 
 export const VIEW_TYPE_MAP = "gis-map-notes-view";
 
@@ -108,6 +109,13 @@ export class MapView extends ItemView {
 	private linkFrom: string | null = null;
 	private linkDraftEl: SVGLineElement | null = null;
 	private pointer: [number, number] | null = null;
+
+	private searchInput!: HTMLInputElement;
+	private searchResultsEl!: HTMLElement;
+	private searchResults: GeoResult[] = [];
+	private searchSeq = 0;
+	/** временная метка найденного адреса */
+	private searchPin: { result: GeoResult; el: HTMLElement } | null = null;
 	private zTop = 10;
 	private flyRaf = 0;
 	private resizeObserver: ResizeObserver | null = null;
@@ -211,6 +219,7 @@ export class MapView extends ItemView {
 			this.plugin.save(false);
 		});
 		map.on("click", (e) => {
+			this.showSearchResults(false);
 			if (this.linkFrom) {
 				this.cancelLink();
 				return;
@@ -326,6 +335,8 @@ export class MapView extends ItemView {
 		this.addBtn.createSpan({ text: "Метка" });
 		this.addBtn.onclick = () => this.setAddMode(!this.addMode);
 
+		this.buildSearch(bar);
+
 		this.modeBtn = bar.createDiv({ cls: "gis-tool-btn gis-mode-btn", attr: { "aria-label": "Режим карты и офлайн-карты" } });
 		this.modeBtn.onclick = () => new OfflineModal(this.app, this.plugin, this).open();
 		this.updateModeButton();
@@ -367,8 +378,8 @@ export class MapView extends ItemView {
 
 	// ---------------- добавление меток ----------------
 
-	startAddMarker(coords: [number, number], folderId: string | null = null) {
-		new NotePickerModal(this.app, async (choice, query) => {
+	startAddMarker(coords: [number, number], folderId: string | null = null, initialName = "", onAdded?: () => void) {
+		const modal = new NotePickerModal(this.app, async (choice, query) => {
 			if (choice.kind === "file") {
 				this.plugin.addMarker(coords, choice.file.basename, choice.file.path, folderId);
 			} else if (choice.kind === "new") {
@@ -378,7 +389,137 @@ export class MapView extends ItemView {
 			} else {
 				this.plugin.addMarker(coords, query || "Метка", "", folderId);
 			}
-		}).open();
+			onAdded?.();
+		});
+		modal.open();
+		if (initialName) {
+			modal.inputEl.value = initialName;
+			modal.inputEl.dispatchEvent(new Event("input"));
+			modal.inputEl.select();
+		}
+	}
+
+	// ---------------- поиск адреса ----------------
+
+	private buildSearch(bar: HTMLElement) {
+		const box = bar.createDiv("gis-search");
+		setIcon(box.createSpan("gis-search-icon"), "search");
+		this.searchInput = box.createEl("input", {
+			type: "search", cls: "gis-search-input",
+			attr: { placeholder: "Поиск адреса…", spellcheck: "false" },
+		});
+		this.searchResultsEl = box.createDiv("gis-search-results");
+		this.showSearchResults(false);
+
+		this.searchInput.addEventListener("keydown", (e) => {
+			e.stopPropagation();
+			if (e.key === "Enter") {
+				e.preventDefault();
+				this.runSearch();
+			} else if (e.key === "Escape") {
+				this.showSearchResults(false);
+				this.searchInput.blur();
+			}
+		});
+		this.searchInput.addEventListener("input", () => {
+			if (this.searchInput.value.trim()) return;
+			this.searchSeq++;
+			this.searchResults = [];
+			this.showSearchResults(false);
+			this.clearSearchPin();
+		});
+		this.searchInput.addEventListener("focus", () => {
+			if (this.searchResults.length) this.showSearchResults(true);
+		});
+	}
+
+	private showSearchResults(show: boolean) {
+		this.searchResultsEl.toggle(show);
+	}
+
+	private async runSearch() {
+		const query = this.searchInput.value.trim();
+		if (!query) return;
+		const seq = ++this.searchSeq;
+		const list = this.searchResultsEl;
+		list.empty();
+		list.createDiv({ cls: "gis-search-status", text: "Ищу…" });
+		this.showSearchResults(true);
+		let results: GeoResult[];
+		try {
+			results = await geocode(query, this.plugin.settings.labelLang);
+		} catch (e) {
+			console.error(e);
+			if (seq !== this.searchSeq) return;
+			list.empty();
+			list.createDiv({ cls: "gis-search-status", text: "Не удалось выполнить поиск — проверьте подключение к интернету" });
+			return;
+		}
+		if (seq !== this.searchSeq) return; // успели начать новый поиск
+		this.searchResults = results;
+		list.empty();
+		if (!results.length) {
+			list.createDiv({ cls: "gis-search-status", text: "Ничего не найдено. Попробуйте «город, улица, дом» без сокращений." });
+			return;
+		}
+		results.forEach((r, i) => {
+			const item = list.createDiv({ cls: "gis-search-item" + (i === 0 ? " is-active" : "") });
+			const text = item.createDiv("gis-search-item-text");
+			text.createDiv({ cls: "gis-search-item-name", text: r.name });
+			text.createDiv({ cls: "gis-search-item-detail", text: r.detail });
+			const add = item.createDiv({ cls: "clickable-icon gis-search-item-add", attr: { "aria-label": "Добавить метку сюда" } });
+			setIcon(add, "map-pin-plus");
+			item.onclick = (e) => {
+				list.querySelectorAll(".is-active").forEach((el) => el.removeClass("is-active"));
+				item.addClass("is-active");
+				this.showSearchResult(r);
+				if ((e.target as HTMLElement).closest(".gis-search-item-add")) this.addMarkerAtSearch();
+				this.showSearchResults(false);
+			};
+		});
+		// сразу показываем лучший результат, список остаётся открытым для выбора
+		this.showSearchResult(results[0]);
+	}
+
+	private showSearchResult(r: GeoResult) {
+		const map = this.map;
+		if (!map) return;
+		this.clearSearchPin();
+		const el = this.pinsEl.createDiv("gis-search-pin");
+		el.createDiv("gis-search-pin-dot");
+		const bubble = el.createDiv("gis-search-bubble");
+		const head = bubble.createDiv("gis-search-bubble-head");
+		head.createDiv({ cls: "gis-search-bubble-name", text: r.name });
+		const close = head.createDiv({ cls: "clickable-icon", attr: { "aria-label": "Убрать" } });
+		setIcon(close, "x");
+		close.onclick = () => this.clearSearchPin();
+		if (r.detail) bubble.createDiv({ cls: "gis-search-bubble-detail", text: r.detail });
+		const btn = bubble.createEl("button", { cls: "mod-cta", text: "Добавить метку" });
+		btn.onclick = () => this.addMarkerAtSearch();
+		this.searchPin = { result: r, el };
+		this.updatePositions();
+
+		const padding = { top: 90, bottom: 60, left: 60, right: 60 + this.sidebar.coveredWidth };
+		// город, район, длинная улица — показываем целиком, дом — крупно.
+		// fitBounds, а не easeTo: padding в easeTo остался бы у карты навсегда
+		const big = r.bounds && (r.bounds[2] - r.bounds[0] > 0.003 || r.bounds[3] - r.bounds[1] > 0.002);
+		const d = 1e-5;
+		const [lng, lat] = r.coords;
+		const b = big ? r.bounds! : [lng - d, lat - d, lng + d, lat + d];
+		map.fitBounds([[b[0], b[1]], [b[2], b[3]]], {
+			padding, maxZoom: big ? 17 : Math.max(map.getZoom(), 17), duration: 800,
+		});
+	}
+
+	private addMarkerAtSearch() {
+		const r = this.searchPin?.result;
+		if (!r) return;
+		this.startAddMarker([...r.coords], null, r.name, () => this.clearSearchPin());
+	}
+
+	private clearSearchPin() {
+		this.searchPin?.el.remove();
+		this.searchPin = null;
 	}
 
 	private async createNote(name: string, coords: [number, number]): Promise<TFile | null> {
@@ -500,6 +641,10 @@ export class MapView extends ItemView {
 		}
 		this.updateLinkPositions();
 		this.updateLinkDraft();
+		if (this.searchPin) {
+			const p = this.project(this.searchPin.result.coords);
+			if (p) this.searchPin.el.style.transform = `translate(${p[0]}px, ${p[1]}px)`;
+		}
 	}
 
 	// ---------------- метки ----------------

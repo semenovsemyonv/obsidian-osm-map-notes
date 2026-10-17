@@ -422,6 +422,191 @@
 	height: 16px;
 }
 
+/* ================= поиск адреса ================= */
+.gis-toolbar {
+	flex-wrap: wrap;
+	align-items: flex-start;
+	max-width: calc(100% - 70px);
+}
+
+.gis-search {
+	position: relative;
+	display: flex;
+	align-items: center;
+	width: min(320px, 70vw);
+	border-radius: 8px;
+	background: var(--background-primary);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.gis-search-icon {
+	display: flex;
+	padding-left: 10px;
+	color: var(--text-muted);
+}
+
+.gis-search-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+.gis-search .gis-search-input {
+	flex: 1;
+	min-width: 0;
+	height: 31px;
+	border: none;
+	background: transparent;
+	box-shadow: none;
+	font-size: var(--font-ui-small);
+	padding: 0 10px 0 8px;
+}
+
+.gis-search .gis-search-input:focus {
+	box-shadow: none;
+}
+
+.gis-search-results {
+	position: absolute;
+	top: calc(100% + 6px);
+	left: 0;
+	right: 0;
+	max-height: 340px;
+	overflow-y: auto;
+	padding: 4px;
+	border-radius: 8px;
+	background: var(--background-primary);
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+}
+
+.gis-search-status {
+	padding: 8px 10px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.gis-search-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 8px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.gis-search-item:hover,
+.gis-search-item.is-active {
+	background: var(--background-modifier-hover);
+}
+
+.gis-search-item-text {
+	flex: 1;
+	min-width: 0;
+}
+
+.gis-search-item-name {
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+}
+
+.gis-search-item-detail {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* временная метка найденного адреса */
+.gis-search-pin {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 0;
+	height: 0;
+	z-index: 2;
+}
+
+.gis-search-pin-dot {
+	position: absolute;
+	left: -8px;
+	top: -8px;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: var(--interactive-accent);
+	border: 3px solid #fff;
+	box-sizing: border-box;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.gis-search-pin-dot::after {
+	content: "";
+	position: absolute;
+	inset: -9px;
+	border-radius: 50%;
+	border: 2px solid var(--interactive-accent);
+	animation: gis-search-ping 1.6s ease-out infinite;
+}
+
+@keyframes gis-search-ping {
+	0% { transform: scale(0.4); opacity: 0.9; }
+	100% { transform: scale(1.5); opacity: 0; }
+}
+
+.gis-search-bubble {
+	position: absolute;
+	left: 0;
+	bottom: 18px;
+	transform: translateX(-50%);
+	width: max-content;
+	max-width: 260px;
+	padding: 8px 10px 10px;
+	border-radius: 10px;
+	background: var(--background-primary);
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+	pointer-events: auto;
+}
+
+.gis-search-bubble::after {
+	content: "";
+	position: absolute;
+	left: 50%;
+	bottom: -6px;
+	width: 12px;
+	height: 12px;
+	margin-left: -6px;
+	background: var(--background-primary);
+	transform: rotate(45deg);
+}
+
+.gis-search-bubble-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+}
+
+.gis-search-bubble-name {
+	flex: 1;
+	font-weight: 600;
+	font-size: var(--font-ui-small);
+}
+
+.gis-search-bubble-head .clickable-icon {
+	padding: 2px;
+	margin: -2px -4px 0 0;
+}
+
+.gis-search-bubble-detail {
+	margin-top: 2px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.gis-search-bubble button {
+	margin-top: 8px;
+	width: 100%;
+}
+
 /* ================= боковая панель ================= */
 .gis-sidebar {
 	position: absolute;
