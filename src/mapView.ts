@@ -250,6 +250,11 @@ export class MapView extends ItemView {
 					navigator.clipboard.writeText(`${lngLat[1].toFixed(6)}, ${lngLat[0].toFixed(6)}`);
 					new Notice("Координаты скопированы");
 				}));
+			menu.addSeparator();
+			const anyOpen = this.plugin.data.markers.some((m) => m.cardOpen);
+			menu.addItem((i) => i.setTitle("Свернуть все карточки").setIcon("fold-vertical")
+				.setDisabled(!anyOpen)
+				.onClick(() => this.plugin.collapseAllCards()));
 			menu.showAtMouseEvent(e.originalEvent);
 		});
 

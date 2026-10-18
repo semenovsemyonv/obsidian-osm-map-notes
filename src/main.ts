@@ -204,6 +204,12 @@ export default class MapNotesPlugin extends Plugin {
 		return !m.hidden && !this.isFolderHidden(m.folderId);
 	}
 
+	/** Сворачивает карточки всех меток */
+	collapseAllCards() {
+		for (const m of this.data.markers) m.cardOpen = false;
+		this.save();
+	}
+
 	/** Показать всё: снимает скрытие со всех меток и папок */
 	showAll() {
 		for (const m of this.data.markers) m.hidden = false;
