@@ -37,7 +37,7 @@ cp main.js manifest.json styles.css "/Users/semensemenov/Documents/Obsidian/Pers
 |---|---|
 | `main.ts` | `MapNotesPlugin`: загрузка/миграция `data.json`, CRUD меток, папок и связей, логика видимости, шина событий, команды, обновление путей при переименовании заметок |
 | `types.ts` | Интерфейсы данных (`MapMarker`, `MarkerFolder`, `MarkerLink`, `PluginSettings`, `OfflineRegion`), `DEFAULT_SETTINGS`, палитра, растровые провайдеры, `uid()` |
-| `mapView.ts` | `MapView` (ItemView, тип `gis-map-notes-view`): карта MapLibre, сборка стиля, DOM/SVG-оверлей меток, карточек и связей, тулбар, контекстные меню, drop заметок, собственный `flyTo` |
+| `mapView.ts` | `MapView` (ItemView, тип `gis-map-notes-view`): карта MapLibre, сборка стиля, DOM/SVG-оверлей меток, карточек и связей, тулбар, контекстные меню, drop заметок, перелёт к метке с ограничением скорости (`flyTo`) |
 | `sidebar.ts` | Правая выезжающая панель: дерево папок/меток, поиск, drag & drop, скрытие (глаз) |
 | `modals.ts` | `NotePickerModal`, `PromptModal`, `ConfirmModal`, `ColorModal` |
 | `settings.ts` | Вкладка настроек (`MapSettingTab`) |
@@ -72,7 +72,7 @@ cp main.js manifest.json styles.css "/Users/semensemenov/Documents/Obsidian/Pers
 - Новые необязательные поля меток/папок — опциональные (`?`), чтобы старые данные оставались валидными.
 - Подписка на события — через `registerEvent`/`registerDomEvent`/`register`, чтобы всё снималось при выгрузке.
 - Уважать правила tile.openstreetmap.org: ≤2 параллельных запроса, zoom ≤16, ≤30 000 тайлов на область. Nominatim — ≤1 запрос/с, только по Enter (без автодополнения).
-- Не передавать `padding` в `easeTo/flyTo` — у MapLibre он становится постоянным; использовать `fitBounds`.
+- Не передавать `padding` в `easeTo/flyTo` — у MapLibre он становится постоянным; использовать `fitBounds` или сдвигать центр вручную (как в `flyTo`).
 
 ## Релиз
 

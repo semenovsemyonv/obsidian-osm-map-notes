@@ -54,5 +54,5 @@ PluginData {
 ## Миграции при загрузке (`onload`)
 - `settings = { ...DEFAULT_SETTINGS, ...raw.settings }`; отсутствующие массивы → `[]`.
 - Удаляется устаревшее поле `settings.themeOptions`.
-- `defaultCenter`, `defaultZoom`, `flyDuration`, `flyZoom` больше не настраиваются и всегда перезаписываются значениями по умолчанию.
+- `defaultCenter`, `defaultZoom`, `flyDuration`, `flyZoom` больше не настраиваются и всегда перезаписываются значениями по умолчанию (`flyDuration` — минимальная длительность перелёта; скорость задаёт настраиваемый `flySpeed`).
 - Новые поля меток/папок делать опциональными, чтобы старый `data.json` оставался валидным.

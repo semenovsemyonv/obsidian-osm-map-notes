@@ -3,6 +3,7 @@ import type MapNotesPlugin from "./main";
 import { COLOR_SCHEMES, ColorScheme, LABEL_LANGS, VECTOR_THEMES } from "./vectorStyle";
 import { MapView, VIEW_TYPE_MAP } from "./mapView";
 import { OfflineModal } from "./offlineModal";
+import { DEFAULT_SETTINGS } from "./types";
 
 export class MapSettingTab extends PluginSettingTab {
 	constructor(app: App, private plugin: MapNotesPlugin) {
@@ -99,6 +100,20 @@ export class MapSettingTab extends PluginSettingTab {
 			.addToggle((tg) => tg
 				.setValue(s.alwaysShowLabels)
 				.onChange((v) => { s.alwaysShowLabels = v; this.plugin.save(); }));
+
+		new Setting(containerEl)
+			.setName("Скорость перелёта к метке")
+			.setDesc("Ограничивает скорость камеры (экранов в секунду): чем дальше метка, тем дольше перелёт. Близкие — не быстрее 0,5 с, самые дальние — не дольше 6 с. По умолчанию 3.")
+			.addSlider((sl) => sl
+				.setLimits(1, 8, 0.5)
+				.setValue(s.flySpeed)
+				.setDynamicTooltip()
+				.onChange((v) => { s.flySpeed = v; this.plugin.save(false); }))
+			.addExtraButton((b) => b.setIcon("rotate-ccw").setTooltip("По умолчанию").onClick(() => {
+				s.flySpeed = DEFAULT_SETTINGS.flySpeed;
+				this.plugin.save(false);
+				this.display();
+			}));
 
 		new Setting(containerEl)
 			.setName("Открывать карточку после перелёта")

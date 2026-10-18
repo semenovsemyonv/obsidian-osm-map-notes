@@ -62,7 +62,10 @@ export interface PluginSettings {
 	offlineMaxZoom: number;
 	defaultCenter: [number, number];
 	defaultZoom: number;
+	/** минимальная длительность перелёта к метке, мс */
 	flyDuration: number;
+	/** максимальная скорость камеры при перелёте, экранов в секунду */
+	flySpeed: number;
 	flyZoom: number;
 	openCardOnFly: boolean;
 	/** все метки закреплены: перетаскивание по карте запрещено (значки не меняются) */
@@ -117,6 +120,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	defaultCenter: [37.6176, 55.7558],
 	defaultZoom: 11,
 	flyDuration: 500,
+	flySpeed: 3,
 	flyZoom: 15,
 	openCardOnFly: true,
 	markersLocked: false,

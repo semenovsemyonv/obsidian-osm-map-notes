@@ -12,8 +12,27 @@ export function fromMerc([x, y]: number[]): [number, number] {
 	return [lng, lat];
 }
 
-export function easeInOutCubic(t: number): number {
-	return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+/**
+ * Длина пути камеры при перелёте (map.flyTo), в «экранах» — та же формула, что в MapLibre
+ * (оптимальный путь ван Вейка — Ньюмана).
+ * @param screenPx размер экрана, px (max из ширины и высоты)
+ * @param dZoom изменение масштаба
+ * @param distPx расстояние между центрами в px при начальном масштабе
+ */
+export function flyPathScreens(screenPx: number, dZoom: number, distPx: number, curve = 1.42): number {
+	const w0 = screenPx;
+	const w1 = w0 / Math.pow(2, dZoom);
+	const r2 = curve * curve;
+	if (distPx > 1e-6) {
+		const r = (i: 0 | 1) => {
+			const b = (w1 * w1 - w0 * w0 + (i ? -1 : 1) * r2 * r2 * distPx * distPx) / (2 * (i ? w1 : w0) * r2 * distPx);
+			return Math.log(Math.sqrt(b * b + 1) - b);
+		};
+		const s = (r(1) - r(0)) / curve;
+		if (isFinite(s)) return s;
+	}
+	// только приближение / отдаление без сдвига
+	return Math.abs(Math.log(w1 / w0)) / curve;
 }
 
 /**

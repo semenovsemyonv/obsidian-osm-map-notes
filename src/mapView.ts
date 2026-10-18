@@ -5,7 +5,7 @@ import * as maplibregl from "maplibre-gl";
 import type { StyleSpecification } from "maplibre-gl";
 import type MapNotesPlugin from "./main";
 import { DEFAULT_CARD_OFFSET, DEFAULT_CARD_SIZE, LinkDirection, MapMarker, MarkerLink } from "./types";
-import { easeInOutCubic, fromMerc, rectEdgePoint, toMerc } from "./geo";
+import { flyPathScreens, fromMerc, rectEdgePoint, toMerc } from "./geo";
 import { ColorModal, ConfirmModal, NotePickerModal, PromptModal } from "./modals";
 import { Sidebar } from "./sidebar";
 import { DownloadJob, OFFLINE_PROTOCOL } from "./offline";
@@ -53,6 +53,10 @@ const PIN_HEAD_Y = 17;
 const LINK_GAP = 15;
 const ARROW_LEN = 11;
 const ARROW_HALF_W = 6;
+/** кривизна траектории перелёта (как в MapLibre): больше — сильнее отдаление посередине */
+const FLY_CURVE = 1.42;
+/** самый долгий перелёт, мс — даже через полмира */
+const FLY_MAX_DURATION = 6000;
 
 function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, cls: string): SVGElementTagNameMap[K] {
 	const el = document.createElementNS(SVG_NS, tag);
@@ -117,7 +121,7 @@ export class MapView extends ItemView {
 	/** временная метка найденного адреса */
 	private searchPin: { result: GeoResult; el: HTMLElement } | null = null;
 	private zTop = 10;
-	private flyRaf = 0;
+	private flyToken = 0;
 	private resizeObserver: ResizeObserver | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: MapNotesPlugin) {
@@ -179,7 +183,7 @@ export class MapView extends ItemView {
 	}
 
 	async onClose() {
-		cancelAnimationFrame(this.flyRaf);
+		this.map?.stop();
 		this.resizeObserver?.disconnect();
 		for (const id of [...this.ui.keys()]) this.removeMarkerUI(id);
 		this.map?.remove();
@@ -1130,14 +1134,15 @@ export class MapView extends ItemView {
 	// ---------------- плавный перелёт ----------------
 
 	/**
-	 * Перелёт камеры к метке: центр интерполируется в меркаторе,
-	 * а масштаб «проседает» посередине пути, если цель далеко (эффект flyTo).
+	 * Перелёт камеры к метке по сглаженной траектории MapLibre (отдаление — пролёт — приближение).
+	 * Длительность зависит от длины пути на экране: скорость камеры не выше flySpeed экранов в секунду,
+	 * поэтому дальние перелёты идут дольше, а ближние — не короче flyDuration.
 	 */
 	flyTo(id: string) {
 		const map = this.map;
 		const m = this.plugin.getMarker(id);
 		if (!map || !m) return;
-		cancelAnimationFrame(this.flyRaf);
+		map.stop();
 		const visible = this.plugin.isMarkerVisible(m);
 		if (!visible) new Notice(m.hidden ? "Метка скрыта с карты" : "Метка в скрытой папке", 2000);
 
@@ -1151,39 +1156,29 @@ export class MapView extends ItemView {
 		const b = toMerc(this.unproject(100, h / 2));
 		const ppm0 = 100 / Math.max(1e-12, Math.abs(b[0] - a[0]));
 
-		// метка оказывается в центре видимой части карты (без области под боковой панелью)
+		// метка оказывается в центре видимой части карты (без области под боковой панелью);
+		// центр сдвигаем сами — padding в flyTo остался бы у карты навсегда
 		const ppm1 = ppm0 * Math.pow(2, z1 - z0);
 		const visibleCenterX = (w - this.sidebar.coveredWidth) / 2;
 		const mm = toMerc(m.coords);
 		const c1: [number, number] = [mm[0] + (w / 2 - visibleCenterX) / ppm1, mm[1]];
 		const c0 = toMerc(map.getCenter().toArray());
+		const center = fromMerc(c1);
 
-		// насколько отдалиться в середине пути
-		const zMin = Math.min(z0, z1);
-		const distPx = Math.hypot(c1[0] - c0[0], c1[1] - c0[1]) * ppm0 * Math.pow(2, zMin - z0);
-		const need = Math.log2(distPx / (Math.max(w, h) * 0.7));
-		const zPeak = Math.max(2, zMin - Math.max(0, need));
-		const dip = Math.max(0, (z0 + z1) / 2 - zPeak);
+		const screens = flyPathScreens(Math.max(w, h), z1 - z0, Math.hypot(c1[0] - c0[0], c1[1] - c0[1]) * ppm0);
+		const duration = Math.min(FLY_MAX_DURATION, Math.max(s.flyDuration, (screens / s.flySpeed) * 1000));
 
-		const duration = s.flyDuration;
-		const t0 = performance.now();
-		const step = (now: number) => {
-			const t = Math.min(1, (now - t0) / duration);
-			const e = easeInOutCubic(t);
-			const zoom = z0 + (z1 - z0) * e - dip * Math.sin(Math.PI * e);
-			const center = fromMerc([c0[0] + (c1[0] - c0[0]) * e, c0[1] + (c1[1] - c0[1]) * e]);
-			map.jumpTo({ center, zoom });
-			if (t < 1) {
-				this.flyRaf = requestAnimationFrame(step);
-			} else {
-				this.flyRaf = 0;
-				if (!visible) return;
-				if (s.openCardOnFly && !m.cardOpen) this.plugin.updateMarker(m.id, { cardOpen: true });
-				this.bringToFront(m.id);
-				this.pulse(m.id);
-			}
-		};
-		this.flyRaf = requestAnimationFrame(step);
+		const token = ++this.flyToken;
+		map.flyTo({ center, zoom: z1, curve: FLY_CURVE, duration, essential: true });
+		map.once("moveend", () => {
+			// перелёт прервали (пользователь потянул карту или начался новый) — карточку не открываем
+			if (token !== this.flyToken || !visible) return;
+			const p = map.project(center);
+			if (Math.hypot(p.x - w / 2, p.y - h / 2) > 10) return;
+			if (s.openCardOnFly && !m.cardOpen) this.plugin.updateMarker(m.id, { cardOpen: true });
+			this.bringToFront(m.id);
+			this.pulse(m.id);
+		});
 	}
 }
 
