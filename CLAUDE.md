@@ -16,13 +16,13 @@ npm run build    # tsc --noEmit + production-сборка (minify)
 
 ## Деплой в тестовое хранилище
 
-Плагин установлен в `/Users/semensemenov/Documents/Obsidian/Personal/.obsidian/plugins/osm-map-notes/`. После сборки скопировать туда три файла и перезагрузить плагин в Obsidian:
+После сборки скопировать три файла в папку плагина тестового хранилища и перезагрузить плагин в Obsidian:
 
 ```bash
-cp main.js manifest.json styles.css "/Users/semensemenov/Documents/Obsidian/Personal/.obsidian/plugins/osm-map-notes/"
+cp main.js manifest.json styles.css "<хранилище>/.obsidian/plugins/osm-map-notes/"
 ```
 
-`data.json` в папке плагина — реальные данные пользователя (метки/папки/настройки), не перезаписывать.
+`data.json` в папке плагина — данные хранилища (метки/папки/настройки), не перезаписывать.
 
 ## Стек
 
