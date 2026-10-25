@@ -65,6 +65,7 @@ cp main.js manifest.json styles.css "/Users/semensemenov/Documents/Obsidian/Pers
 
 ## Соглашения
 
+- Адаптивность — через `@container gis-map` (ширина вида, не устройства) и `body.is-phone` для отступа от панели навигации Obsidian; порог синхронизирован с `NARROW_WIDTH` в `mapView.ts`.
 - CSS-классы с префиксом `gis-`, стили — в `styles.css`, используются переменные темы Obsidian.
 - Комментарии и UI-строки на русском; отступы — табы.
 - Координаты всегда `[lng, lat]`; bounds — `[запад, юг, восток, север]`.

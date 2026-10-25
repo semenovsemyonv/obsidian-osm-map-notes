@@ -91,6 +91,8 @@ export class Sidebar {
 	setOpen(open: boolean, persist = true) {
 		this.isOpen = open;
 		this.el.toggleClass("is-open", open);
+		// по этому классу тулбар карты освобождает место под открытую панель
+		this.view.contentEl.toggleClass("gis-sidebar-open", open);
 		if (persist) {
 			this.view.plugin.settings.sidebarOpen = open;
 			this.view.plugin.save(false);

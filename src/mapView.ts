@@ -57,6 +57,11 @@ const ARROW_HALF_W = 6;
 const FLY_CURVE = 1.42;
 /** самый долгий перелёт, мс — даже через полмира */
 const FLY_MAX_DURATION = 6000;
+/** ширина карты, при которой интерфейс переходит в компактный (телефонный) вид — как @container в styles.css */
+const NARROW_WIDTH = 600;
+/** на узком экране: отступ карточки от краёв и место под тулбар сверху */
+const CARD_EDGE = 8;
+const CARD_TOP = 56;
 
 function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, cls: string): SVGElementTagNameMap[K] {
 	const el = document.createElementNS(SVG_NS, tag);
@@ -88,6 +93,8 @@ interface CardUI {
 	component: Component;
 	renderedPath: string | null;
 	resizeObserver: ResizeObserver;
+	/** размер, выставленный карточке на экране (может быть меньше cardSize на телефоне) */
+	shownSize: [number, number];
 }
 
 export class MapView extends ItemView {
@@ -341,7 +348,7 @@ export class MapView extends ItemView {
 		const bar = this.wrapEl.createDiv("gis-toolbar");
 		this.addBtn = bar.createDiv({ cls: "gis-tool-btn", attr: { "aria-label": "Добавить метку (клик по карте)" } });
 		setIcon(this.addBtn, "map-pin-plus");
-		this.addBtn.createSpan({ text: "Метка" });
+		this.addBtn.createSpan({ text: "Метка", cls: "gis-tool-label" });
 		this.addBtn.onclick = () => this.setAddMode(!this.addMode);
 
 		this.buildSearch(bar);
@@ -356,7 +363,7 @@ export class MapView extends ItemView {
 		this.modeBtn.empty();
 		this.modeBtn.toggleClass("is-offline", offline);
 		setIcon(this.modeBtn.createSpan("gis-mode-icon"), offline ? "hard-drive-download" : "wifi");
-		this.modeBtn.createSpan({ text: offline ? "Офлайн" : "Онлайн" });
+		this.modeBtn.createSpan({ text: offline ? "Офлайн" : "Онлайн", cls: "gis-tool-label" });
 		if (job && !job.cancelled && job.done < job.total) {
 			this.modeBtn.createSpan({ cls: "gis-mode-progress", text: `${Math.floor((job.done / job.total) * 100)}%` });
 		}
@@ -626,9 +633,14 @@ export class MapView extends ItemView {
 
 			const card = ui.card;
 			if (!card) continue;
-			const cx = x + m.cardOffset[0];
-			const cy = y + m.cardOffset[1];
-			const [cw, ch] = m.cardSize;
+			const [cw, ch] = this.applyCardSize(m, card);
+			let cx = x + m.cardOffset[0];
+			let cy = y + m.cardOffset[1];
+			// на телефоне карточка видимой метки не уезжает за край экрана (смещение в данных не меняется)
+			if (w <= NARROW_WIDTH && x >= 0 && x <= w && y >= 0 && y <= h) {
+				cx = Math.max(CARD_EDGE, Math.min(w - cw - CARD_EDGE, cx));
+				cy = Math.max(CARD_TOP, Math.min(h - ch - CARD_EDGE, cy));
+			}
 			card.el.style.transform = `translate(${cx}px, ${cy}px)`;
 
 			// линия идёт от «головки» метки к ближайшей точке края карточки
@@ -739,8 +751,9 @@ export class MapView extends ItemView {
 	private createCard(m: MapMarker): CardUI {
 		const el = this.cardsEl.createDiv("gis-card");
 		el.style.zIndex = String(++this.zTop);
-		el.style.width = `${m.cardSize[0]}px`;
-		el.style.height = `${m.cardSize[1]}px`;
+		const shownSize = this.cardDisplaySize(m);
+		el.style.width = `${shownSize[0]}px`;
+		el.style.height = `${shownSize[1]}px`;
 
 		const header = el.createDiv("gis-card-header");
 		header.createDiv("gis-card-color");
@@ -813,7 +826,11 @@ export class MapView extends ItemView {
 			if (!marker || !el.isConnected) return;
 			const size: [number, number] = [el.offsetWidth, el.offsetHeight];
 			if (size[0] === 0) return;
+			const card = this.ui.get(id)?.card;
+			// размер выставили мы сами (в т.ч. ужали под экран телефона) — не сохраняем
+			if (card && size[0] === card.shownSize[0] && size[1] === card.shownSize[1]) return;
 			if (size[0] !== marker.cardSize[0] || size[1] !== marker.cardSize[1]) {
+				if (card) card.shownSize = size;
 				marker.cardSize = size;
 				this.plugin.save(false);
 				this.updatePositions();
@@ -832,7 +849,7 @@ export class MapView extends ItemView {
 		});
 
 		requestAnimationFrame(() => el.addClass("is-shown"));
-		return { el, titleEl, bodyEl, lineEl, dotEl, component, renderedPath: null, resizeObserver };
+		return { el, titleEl, bodyEl, lineEl, dotEl, component, renderedPath: null, resizeObserver, shownSize };
 	}
 
 	private removeCard(ui: MarkerUI) {
@@ -852,11 +869,27 @@ export class MapView extends ItemView {
 		card.dotEl.style.fill = m.color;
 		card.titleEl.setText(m.name);
 		card.titleEl.setAttr("title", m.notePath || m.name);
-		if (card.el.offsetWidth !== m.cardSize[0] || card.el.offsetHeight !== m.cardSize[1]) {
-			card.el.style.width = `${m.cardSize[0]}px`;
-			card.el.style.height = `${m.cardSize[1]}px`;
-		}
+		this.applyCardSize(m, card);
 		if (card.renderedPath !== m.notePath) this.renderCardBody(m, card);
+	}
+
+	/** Размер карточки на экране: на узком экране — не больше видимой области */
+	private cardDisplaySize(m: MapMarker): [number, number] {
+		const [cw, ch] = m.cardSize;
+		const w = this.wrapEl.clientWidth;
+		const h = this.wrapEl.clientHeight;
+		if (w > NARROW_WIDTH || !w || !h) return [cw, ch];
+		return [Math.min(cw, w - CARD_EDGE * 2), Math.min(ch, Math.round(h * 0.5))];
+	}
+
+	private applyCardSize(m: MapMarker, card: CardUI): [number, number] {
+		const size = this.cardDisplaySize(m);
+		if (size[0] !== card.shownSize[0] || size[1] !== card.shownSize[1]) {
+			card.shownSize = size;
+			card.el.style.width = `${size[0]}px`;
+			card.el.style.height = `${size[1]}px`;
+		}
+		return size;
 	}
 
 	private async renderCardBody(m: MapMarker, card: CardUI) {
